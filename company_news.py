@@ -1,0 +1,146 @@
+from email.utils import parsedate_to_datetime
+from urllib.parse import urlencode
+import xml.etree.ElementTree as ET
+
+import requests
+import streamlit as st
+
+
+# 회사 소개는 여기에 등록된 기업에 표시돼.
+# 뉴스는 아래 목록에 없는 회사도 이름으로 검색할 수 있어.
+COMPANIES = {
+    "005930": ("삼성전자", "반도체·전자제품",
+               "메모리 반도체, 스마트폰, TV, 생활가전 등을 만드는 기업입니다."),
+    "000660": ("SK하이닉스", "반도체",
+               "서버와 컴퓨터 등에 쓰이는 DRAM과 NAND 플래시 메모리를 만드는 기업입니다."),
+    "005380": ("현대차", "자동차",
+               "승용차, SUV, 전기차, 상용차 등을 개발하고 판매하는 기업입니다."),
+    "035720": ("카카오", "인터넷 서비스",
+               "카카오톡을 기반으로 광고, 커머스, 콘텐츠 등의 서비스를 제공하는 기업입니다."),
+    "066570": ("LG전자", "전자제품",
+               "생활가전, TV, 자동차 부품 등을 개발하고 판매하는 기업입니다."),
+}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_news(company_name):
+    params = {
+        "q": f'"{company_name}" when:7d',
+        "hl": "ko",
+        "gl": "KR",
+        "ceid": "KR:ko",
+    }
+    response = requests.get(
+        "https://news.google.com/rss/search",
+        params=params,
+        timeout=10,
+    )
+    response.raise_for_status()
+    root = ET.fromstring(response.content)
+
+    articles = []
+    for item in root.findall("./channel/item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        source = (item.findtext("source") or "").strip()
+        if not title or not link.startswith(("https://", "http://")):
+            continue
+
+        # 제목 끝에 언론사 이름이 붙어 있으면 한 번만 표시해.
+        if source:
+            title = title.removesuffix(f" - {source}")
+
+        try:
+            published = parsedate_to_datetime(item.findtext("pubDate") or "")
+            timestamp = published.timestamp()
+            date = published.strftime("%Y.%m.%d")
+        except (TypeError, ValueError, OverflowError):
+            timestamp = 0
+            date = ""
+
+        articles.append((timestamp, title, source, date, link))
+
+    articles.sort(key=lambda article: article[0], reverse=True)
+
+    latest = []
+    seen_titles = set()
+    for _, title, source, date, link in articles:
+        if title not in seen_titles:
+            latest.append((title, source, date, link))
+            seen_titles.add(title)
+        if len(latest) == 3:
+            break
+    return latest
+
+
+def show_company_news(company_name, ticker=""):
+    company_name = company_name.strip()
+    if not company_name:
+        return
+
+    code = str(ticker or "").strip().split(".")[0]
+    if code.isdigit():
+        code = code.zfill(6)
+
+    # 단독 실행하면 회사명으로, 조장의 화면과 연결하면 종목코드로도 찾을 수 있어.
+    if not code:
+        for stock_code, (name, _, _) in COMPANIES.items():
+            if name.casefold() == company_name.casefold():
+                code = stock_code
+                break
+
+    st.subheader(f"{company_name} 회사 정보")
+    if code:
+        st.caption(f"종목코드 {code}")
+
+    if code:
+        import yfinance as yf
+
+        try:
+            yahoo_ticker = code.replace(".", "-")
+            with st.spinner("미국 기업 정보를 불러오는 중입니다..."):
+                info = yf.Ticker(yahoo_ticker).get_info() or {}
+        except Exception:
+            info = {}
+
+        industry = info.get("industry") or info.get("sector")
+        description = info.get("longBusinessSummary")
+
+        if industry:
+            st.write(f"**업종** · {industry}")
+        if description:
+            st.write(description)
+        else:
+            st.caption("현재 이 종목의 회사 소개를 불러올 수 없습니다.")
+    st.divider()
+    st.subheader("최근 관련 뉴스")
+    st.caption("최근 7일간의 Google 뉴스 검색 결과에서 최신순으로 최대 3건을 표시합니다.")
+
+    search_params = urlencode({
+        "q": company_name, "hl": "ko", "gl": "KR", "ceid": "KR:ko"
+    })
+    search_url = f"https://news.google.com/search?{search_params}"
+
+    try:
+        with st.spinner("관련 뉴스를 불러오는 중입니다..."):
+            articles = get_news(company_name)
+    except (requests.RequestException, ET.ParseError):
+        st.warning("현재 뉴스 목록을 불러올 수 없습니다.")
+        st.link_button("Google 뉴스에서 직접 보기", search_url)
+        return
+
+    if not articles:
+        st.info("최근 7일 동안 검색된 기사가 없습니다.")
+        st.link_button("기간 제한 없이 뉴스 검색", search_url)
+        return
+
+    for title, source, date, link in articles:
+        with st.container(border=True):
+            st.caption(" · ".join(value for value in (source, date) if value))
+            st.write(title)
+            st.link_button("기사 보기", link)
+if __name__ == "__main__":
+    st.title("기업 정보와 뉴스")
+    company_name = st.text_input("조회할 기업", placeholder="예: 삼성전자, 카카오")
+    if company_name.strip():
+        show_company_news(company_name, "")

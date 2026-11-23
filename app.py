@@ -1,7 +1,7 @@
 import streamlit as st
 from stock_price import show_stock_price
 from stock_search import load_stock_list, search_company
-
+from company_news import show_company_news
 
 st.set_page_config(
     page_title="Stock Insight AI",
@@ -102,7 +102,15 @@ if results:
     )
 
     # 기존 주가 조회 기능 연결
-    show_stock_price(ticker)
+    company_name = company["korean_name"] or company["english_name"]
+    price_tab, news_tab = st.tabs(["주가", "회사 정보 · 뉴스"])
+
+    with price_tab:
+        show_stock_price(ticker)
+
+    with news_tab:
+        show_company_news(company_name, ticker)
+        
 
 
 st.caption(
