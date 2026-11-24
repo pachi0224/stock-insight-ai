@@ -3,6 +3,7 @@ from stock_price import show_stock_price
 from stock_search import load_stock_list, search_company
 from company_news import show_company_news
 from earnings import show_earnings
+from company_card import show_company_card
 
 st.set_page_config(
     page_title="Stock Insight AI",
@@ -104,7 +105,9 @@ if results:
 
     # 기존 주가 조회 기능 연결
     company_name = company["korean_name"] or company["english_name"]
-    price_tab, earnings_tab, news_tab = st.tabs(["주가", "실적 요약", "회사 정보 · 뉴스"])
+    price_tab, earnings_tab, card_tab, news_tab = st.tabs(["주가", "실적 요약", "기업 분석", "회사 정보 · 뉴스"])
+    with card_tab:
+        show_company_card(ticker, company_name)
 
     with price_tab:
         show_stock_price(ticker)
