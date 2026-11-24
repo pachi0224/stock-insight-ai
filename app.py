@@ -105,17 +105,22 @@ if results:
 
     # 기존 주가 조회 기능 연결
     company_name = company["korean_name"] or company["english_name"]
-    price_tab, earnings_tab, card_tab, news_tab = st.tabs(["주가", "실적 요약", "기업 분석", "회사 정보 · 뉴스"])
-    with card_tab:
+    view = st.radio(
+        "조회할 정보",
+        ["주가", "실적 요약", "기업 분석", "회사 정보 · 뉴스"],
+        index=3,
+        horizontal=True,
+    )
+    if view == "기업 분석":
         show_company_card(ticker, company_name)
 
-    with price_tab:
+    if view == "주가":
         show_stock_price(ticker)
 
-    with earnings_tab:
+    if view == "실적 요약":
         show_earnings(ticker, company_name)
 
-    with news_tab:
+    if view == "회사 정보 · 뉴스":
         show_company_news(company_name, ticker)
         
 

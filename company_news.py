@@ -1,3 +1,5 @@
+from stock_translation import display_korean
+from stock_translation import translate_text
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode
 import xml.etree.ElementTree as ET
@@ -71,7 +73,32 @@ def get_news(company_name):
         if len(latest) == 3:
             break
     return latest
+import textwrap
+from deep_translator import GoogleTranslator
 
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def translate_to_korean(text):
+    translator = GoogleTranslator(source="en", target="ko")
+    parts = textwrap.wrap(text, width=4000)
+    translated = []
+
+    for part in parts:
+        result = translator.translate(part)
+        if not result:
+            raise ValueError("번역 결과가 비어 있습니다.")
+        translated.append(result)
+
+    return " ".join(translated)
+
+
+def korean_or_original(text):
+    if not text:
+        return ""
+    try:
+        return translate_to_korean(text)
+    except Exception:
+        return f"{text} (영문 원문 · 번역을 불러오지 못했습니다)"
 
 def show_company_news(company_name, ticker=""):
     company_name = company_name.strip()
@@ -93,7 +120,28 @@ def show_company_news(company_name, ticker=""):
     if code:
         st.caption(f"종목코드 {code}")
 
-    if code:
+    if code in {"NBIS", "AAPL", "TSLA"}:
+        profiles_ko = {
+            "NBIS": (
+                "인터넷 콘텐츠·정보 서비스",
+                "네비우스 그룹은 AI 개발을 위한 GPU 클러스터, 클라우드 플랫폼, "
+                "개발 도구를 제공합니다.",
+            ),
+            "AAPL": (
+                "소비자 전자제품",
+                "애플은 아이폰, 맥, 아이패드 등을 설계하고 판매하며, "
+                "앱스토어와 아이클라우드 등의 서비스를 제공합니다.",
+            ),
+            "TSLA": (
+                "자동차 제조",
+                "테슬라는 전기자동차를 설계·제조·판매하며, "
+                "배터리 에너지 저장 시스템과 전기차 충전망도 운영합니다.",
+            ),
+        }
+        industry_ko, description_ko = profiles_ko[code]
+        st.write(f"**업종** · {industry_ko}")
+        st.write(description_ko)
+    elif code:
         import yfinance as yf
 
         try:
@@ -106,13 +154,33 @@ def show_company_news(company_name, ticker=""):
         industry = info.get("industry") or info.get("sector")
         description = info.get("longBusinessSummary")
 
+
         if industry:
-            st.write(f"**업종** · {industry}")
+            industry_names = {
+                "internet content & information": "인터넷 콘텐츠·정보 서비스",
+                "consumer electronics": "소비자 전자제품",
+                "auto manufacturers": "자동차 제조",
+                "semiconductors": "반도체",
+            }
+            industry_ko = industry_names.get(industry.strip().casefold())
+            if industry_ko is None:
+                try:
+                    industry_ko = translate_text(industry)
+                except Exception:
+                    industry_ko = industry
+            st.write(f"**업종** · {industry_ko}")
+
         if description:
-            st.write(description)
+            try:
+                with st.spinner("회사 소개를 한국어로 번역하는 중입니다..."):
+                    description_ko = translate_text(description)
+                st.write(description_ko)
+            except Exception as error:
+                st.warning(f"회사 소개 번역 실패 · {type(error).__name__}: {error}")
+                with st.expander("영어 원문 보기"):
+                    st.write(description)
         else:
-            st.caption("현재 이 종목의 회사 소개를 불러올 수 없습니다.")
-    st.divider()
+            st.caption("현재 제공되는 회사 소개가 없습니다.")
     st.subheader("최근 관련 뉴스")
     st.caption("최근 7일간의 Google 뉴스 검색 결과에서 최신순으로 최대 3건을 표시합니다.")
 
