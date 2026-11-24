@@ -4,3 +4,4 @@ pandas
 plotly
 requests>=2.31
 openai>=1.68
+google-genai>=1.0
